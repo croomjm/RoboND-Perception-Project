@@ -111,7 +111,7 @@ class Segmenter(object):
         # Classify the clusters! (loop through each detected cluster one at a time)
         detected_objects_labels = []
         detected_objects = []
-        detected_objects_list = {labels:[], centroids:[]}
+        #detected_objects_list = {'labels':[], 'centroids':[]}
         positions = []
         centroids = []
 
@@ -127,8 +127,6 @@ class Segmenter(object):
             positions.append(list(cluster[0][:3]))
 
             cluster = pcl_to_ros(cluster)
-
-            centroids.append(self.get_centroids(cluster))
 
             # Compute the associated feature vector
             chists = compute_color_histograms(cluster, using_hsv=True)
@@ -185,7 +183,7 @@ class Segmenter(object):
     def get_centroid(self, cloud):
         #return centroid (x,y,z) of a pcl cloud
         points = np.mean(cloud.to_array(), axis=0)[:3]
-        points = points.astype(np._float)
+        points = points.astype(np.float32)
 
         return points
 

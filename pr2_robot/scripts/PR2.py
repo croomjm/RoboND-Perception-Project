@@ -54,12 +54,13 @@ class PR2(object):
         self.dropbox_dict = {}
         self.dict_list = []
         self.object_list = None
+        self.color_list = []
 
         #load SVM object classifier
         self.model = pickle.load(open(model_file, 'rb'))
 
         #initialize object segmenter
-        self.segmeter = Segmenter(self.model)
+        self.segmenter = Segmenter(self.model)
 
         #initialize point cloud publishers
         self.objects_pub = rospy.Publisher("/pcl_objects", PointCloud2, queue_size=1)
@@ -67,6 +68,8 @@ class PR2(object):
         self.colorized_cluster_pub = rospy.Publisher("/colorized_clusters", PointCloud2, queue_size=1)
         self.object_markers_pub = rospy.Publisher("/object_markers", Marker, queue_size=1)
         self.detected_objects_pub = rospy.Publisher("/detected_objects", DetectedObjectsArray, queue_size = 1)
+        #self.denoised_pub = rospy.Publisher("/denoised_cloud", PointCloud2, queue_size = 1)
+        self.reduced_cloud_pub = rospy.Publisher("/decimated_cloud", PointCloud2, queue_size = 1)
 
         print('PR2 object initialized.')
 
@@ -82,26 +85,35 @@ class PR2(object):
     def segment_scene(self, pcl_msg):
         seg = self.segmenter #to reduce verbosity below
 
-                # TODO: Convert ROS msg to PCL data
+        # TODO: Convert ROS msg to PCL data
         cloud = ros_to_pcl(pcl_msg)
-        leaf_size = 0.01
+        leaf_size = 0.005
 
         # TODO: Voxel Grid Downsampling
         print('Reducing voxel resolution.')
         cloud = seg.voxel_grid_downsample(cloud, leaf_size = leaf_size)
         decimated_cloud = cloud
 
+        #Reduce outlier noise in object cloud
+        print('Rejecting outliers in raw cloud.')
+        cloud = seg.outlier_filter(cloud, 15, 0.01)
+        denoised_cloud = cloud
+
         # TODO: PassThrough Filter
         print('Applying passthrough filters.')
-        cloud = seg.axis_passthrough_filter(cloud, 'z', (0.6, 1.1)) #filter below table
+        cloud = seg.axis_passthrough_filter(cloud, 'z', (0.55, 2)) #filter below table
         #passthroughz_cloud = cloud
-        cloud = seg.axis_passthrough_filter(cloud, 'y', (-10, -1.35)) #filter out table front edge
+        cloud = seg.axis_passthrough_filter(cloud, 'x', (.35, 10)) #filter out table front edge
         #passthroughy_cloud = cloud
 
         # TODO: RANSAC Plane Segmentation
         # TODO: Extract inliers and outliers
         print('Performing plane segmentation.')
         table_cloud, objects_cloud = seg.ransac_plane_segmentation(cloud, max_distance = leaf_size)
+
+        #Reduce outlier noise in object cloud
+        print('Rejecting outliers in objects cloud.')
+        objects_cloud = seg.outlier_filter(objects_cloud, 10, 0.01)
 
         # TODO: Euclidean Clustering
         # TODO: Create Cluster-Mask Point Cloud to visualize each cluster separately
@@ -113,12 +125,14 @@ class PR2(object):
         # TODO: Convert PCL data to ROS messages
         # TODO: Publish ROS messages
         print('Converting PCL data to ROS messages.')
-        message_pairs = [#(decimated_cloud, self.reduced_cloud_pub),
+        message_pairs = [(decimated_cloud, self.reduced_cloud_pub),
+                         #(denoised_cloud, self.denoised_pub),
                          (objects_cloud, self.objects_pub),
                          (table_cloud, self.table_pub),
-                         (colorized_object_clusters, self.colorized_cluster_pub)]
+                         (colorized_object_clusters, self.colorized_cluster_pub)
                          #(passthroughy_cloud, self.passthroughy_filter_pub),
-                         #(passthroughz_cloud, self.passthroughz_filter_pub)]
+                         #(passthroughz_cloud, self.passthroughz_filter_pub),
+                         ]
         
         seg.convert_and_publish(message_pairs)
 
@@ -187,7 +201,7 @@ class PR2(object):
         except rospy.ServiceException as e:
             print('Service call failed: {}'.format(e))
 
-    def mover(self);
+    def mover(self):
         print('Starting mover method.')
 
         # TODO: Get/Read parameters
@@ -233,9 +247,20 @@ class PR2(object):
 
         #identify the objects listed in the pick list
         #submit them to the pick_place_routine
-        self.mover()
+        #self.mover()
 
-def main()
+def main():
+    model_file = '../training/model.sav'
+
+    # TODO: ROS node initialization
+    rospy.init_node('pr2', anonymous=True)
+
+    pr2 = PR2(model_file)
+
+    #initialize point cloud subscriber
+    pcl_sub = rospy.Subscriber("/pr2/world/points", pc2.PointCloud2, pr2.pcl_callback, queue_size=1)
+
+    rospy.spin()
 
 if __name__ == '__main__':
     try:
