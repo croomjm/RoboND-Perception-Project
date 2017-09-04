@@ -1,7 +1,7 @@
 <launch>
   <!--Add a new arg for test_scene_number-->
   <!--Usage: test_scene_number:=1 or 2 or 3-->
-  <arg name="test_scene_num"/>
+  <arg name="test_scene_num" value="2"/>
 
   <!--Include description and control launch files-->
   <include file="$(find pr2_robot)/launch/robot_description.launch"/>
