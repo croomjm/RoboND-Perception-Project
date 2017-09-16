@@ -129,7 +129,7 @@ class Segmenter(object):
             cluster = pcl_to_ros(cluster)
 
             # Compute the associated feature vector
-            chists = compute_color_histograms(cluster, using_hsv=True)
+            chists = compute_color_histograms(cluster)#, using_hsv=True)
             normals = self.get_normals(cluster)
             nhists = compute_normal_histograms(normals)
             feature_vector = np.concatenate((chists, nhists))
