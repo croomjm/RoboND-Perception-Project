@@ -40,8 +40,8 @@ class Segmenter(object):
         for index, do in enumerate(detected_objects):
             # Publish the label into RViz
             centroid = self.get_centroid(ros_to_pcl(do.cloud))
-            centroid[2] += .4 #move above the object
-            marker_pub.publish(make_label(do.label,centroid,index))
+            marker_loc = [centroid[0], centroid[1], centroid[2] + 0.2]
+            marker_pub.publish(make_label(do.label,marker_loc,index))
 
         objects_pub.publish(detected_objects)
 

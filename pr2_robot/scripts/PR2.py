@@ -57,8 +57,11 @@ class PR2(object):
         self.dict_list = []
         self.object_list = None
         self.color_list = []
+        self.yaml_saved = False
+        self.collision_map_complete = False
 
         self.table_cloud = None
+        self.collision_map_base_list = None
         self.detected_objects = None
 
         #load SVM object classifier
@@ -69,12 +72,12 @@ class PR2(object):
 
         #initialize point cloud publishers
         self.objects_pub = rospy.Publisher("/pcl_objects", PointCloud2, queue_size=1)
-        self.table_pub = rospy.Publisher("/pcl_table", PointCloud2, queue_size=1)
-        self.colorized_cluster_pub = rospy.Publisher("/colorized_clusters", PointCloud2, queue_size=1)
+        #self.table_pub = rospy.Publisher("/pcl_table", PointCloud2, queue_size=1)
+        #self.colorized_cluster_pub = rospy.Publisher("/colorized_clusters", PointCloud2, queue_size=1)
         self.object_markers_pub = rospy.Publisher("/object_markers", Marker, queue_size=1)
         self.detected_objects_pub = rospy.Publisher("/detected_objects", DetectedObjectsArray, queue_size = 1)
         #self.denoised_pub = rospy.Publisher("/denoised_cloud", PointCloud2, queue_size = 1)
-        self.reduced_cloud_pub = rospy.Publisher("/decimated_cloud", PointCloud2, queue_size = 1)
+        #self.reduced_cloud_pub = rospy.Publisher("/decimated_cloud", PointCloud2, queue_size = 1)
 
         self.collision_cloud_pub = rospy.Publisher("/pr2/3d_map/points", PointCloud2, queue_size = 1)
 
@@ -89,11 +92,16 @@ class PR2(object):
             yaml.dump(data_dict, outfile, default_flow_style=False)
 
     ##PR2 mover##
-    def joint_state_handler(self,msg):
-        print('Joint state received.')
-        index = msg.name.index('world_joint')
-        position = msg.position[index]
-        print('World Joint position: {}'.format(position))
+    def get_world_joint_state(self):
+        try:
+            msg = rospy.wait_for_message("joint_states", JointState, timeout = 10)
+            index = msg.name.index('world_joint')
+            position = msg.position[index]
+        except rospy.ServiceException as e:
+            print('Failed to get world_joint position.')
+            position = 10**6
+
+        return position
 
     def segment_scene(self, pcl_msg):
         seg = self.segmenter #to reduce verbosity below
@@ -110,7 +118,7 @@ class PR2(object):
         #Reduce outlier noise in object cloud
         print('Rejecting outliers in raw cloud.')
         cloud = seg.outlier_filter(cloud, 15, 0.01)
-        denoised_cloud = cloud
+        #denoised_cloud = cloud
 
         # TODO: PassThrough Filter
         print('Applying passthrough filters.')
@@ -132,7 +140,7 @@ class PR2(object):
         # TODO: Create Cluster-Mask Point Cloud to visualize each cluster separately
         print('Finding object clusters.')
         cluster_indices = seg.get_euclidean_cluster_indices(objects_cloud, 0.03, (10,5000))
-        colorized_object_clusters = seg.return_colorized_clusters(objects_cloud, cluster_indices, self.color_list)
+        #colorized_object_clusters = seg.return_colorized_clusters(objects_cloud, cluster_indices, self.color_list)
         detected_objects, detected_objects_dict = seg.detect_objects(objects_cloud, cluster_indices)
 
 
@@ -140,11 +148,11 @@ class PR2(object):
         # TODO: Convert PCL data to ROS messages
         # TODO: Publish ROS messages
         print('Converting PCL data to ROS messages.')
-        message_pairs = [(decimated_cloud, self.reduced_cloud_pub),
+        message_pairs = [#(decimated_cloud, self.reduced_cloud_pub),
                          #(denoised_cloud, self.denoised_pub),
-                         (objects_cloud, self.objects_pub),
-                         (table_cloud, self.table_pub),
-                         (colorized_object_clusters, self.colorized_cluster_pub)
+                         (objects_cloud, self.objects_pub)
+                         #(table_cloud, self.table_pub),
+                         #(colorized_object_clusters, self.colorized_cluster_pub)
                          #(passthroughy_cloud, self.passthroughy_filter_pub),
                          #(passthroughz_cloud, self.passthroughz_filter_pub),
                          ]
@@ -160,37 +168,48 @@ class PR2(object):
         self.detected_objects = detected_objects
         self.table_cloud = table_cloud
 
+    def move_world_joint(self, goal, pub_j1):
+        print('Attempting to move world joint to {}'.format(goal))
+        increments = 10
+        position = self.get_world_joint_state()
+
+        goal_positions = [n*1.0/increments*(goal-position) + position for n in range(1, increments + 1)]
+        for i, g in enumerate(goal_positions):
+            print('Publishing goal {0}: {1}'.format(i, g))
+            pub_j1.publish(g)
+            while abs(position - g) > .005:
+                position = self.get_world_joint_state()
+                print('Position: {0}, Error: {1}'.format(position, abs(position - g)))
+                rospy.sleep(1)
+
     def capture_collision_map(self):
         #publish joint positins from 0 to 2*pi to survey entire environment
         pub_j1 = rospy.Publisher('/pr2/world_joint_controller/command',
                                  Float64, queue_size=10)
 
-        rate = rospy.Rate(10)
-        increments = 30
-        positions = range(increments)
-        increments = increments*1.0
+        print('Sending new world_joint state goal.')
 
-        for i in positions:
-            position = i/increments*2*pi
-            pub_j1.publish(position)
-            rate.sleep()
+        goal_positions = [-pi/2, pi/2, 0]
 
-
-        pub_j1.publish(0)
+        for g in goal_positions:
+            self.move_world_joint(g, pub_j1)
+            self.segment_scene()
+            self.collision_map_base_list.extend(list(self.table_cloud))
 
     def publish_collision_map(self,object_name,picked_objects):
+        #obstacle_cloud_list = self.collision_map_base_list
         obstacle_cloud_list = list(self.table_cloud)
 
-        for obj in self.detected_objects:
-            if obj.label != object_name and obj.label not in picked_objects:
-                obj_cloud = ros_to_pcl(obj.cloud)
-                obstacle_cloud_list.extend(list(obj_cloud))
-                print(obstacle_cloud)
+        # for obj in self.detected_objects:
+        #     if obj.label != object_name and obj.label not in picked_objects:
+        #         obj_cloud = ros_to_pcl(obj.cloud)
+        #         obstacle_cloud_list.extend(list(obj_cloud))
+        #         #print(obstacle_cloud)
 
         obstacle_cloud = pcl.PointCloud_PointXYZRGB()
         obstacle_cloud.from_list(obstacle_cloud_list)
 
-        self.segmenter.convert_and_publish([(obstacle_cloud, )])
+        self.segmenter.convert_and_publish([(obstacle_cloud, self.collision_cloud_pub)])
 
     def find_pick_object(self, obj):
         ppd = pick_place_data()
@@ -198,25 +217,28 @@ class PR2(object):
         group = obj['group']
         name = obj['name']
 
+        print('Looking for pick object: {}'.format(name))
+
         #See if object is found within object list
         #if so, use position to populate pick_place_data object
         pos = self.object_list.get(name)
 
         if pos is not None:
+            print('Object found!')
 
             # TODO: Get the PointCloud for a given object and obtain it's centroid
             ppd.object_name.data = name
             ppd.pick_pose_point.x = np.asscalar(pos[0])
             ppd.pick_pose_point.y = np.asscalar(pos[1])
-            ppd.pick_pose_point.z = np.asscalar(pos[2])
-            ppd.pick_pose.position = pick_pose_point
+            ppd.pick_pose_point.z = np.asscalar(pos[2])# - 0.1
+            ppd.pick_pose.position = ppd.pick_pose_point
 
             # TODO: Create 'place_pose' for the object
             dropboxdata = self.dropbox_dict[group]
             ppd.place_pose_point.x = dropboxdata.pos[0]
             ppd.place_pose_point.y = dropboxdata.pos[1]
             ppd.place_pose_point.z = dropboxdata.pos[2]
-            ppd.place_pose.position = place_pose_point
+            ppd.place_pose.position = ppd.place_pose_point
 
             # TODO: Assign the arm to be used for pick_place
             ppd.arm_name.data = dropboxdata.arm
@@ -226,9 +248,9 @@ class PR2(object):
 
             # TODO: Create a list of dictionaries (made with make_yaml_dict())
             # for later output to yaml format
-            yaml_dict = self.make_yaml_dict(ppd)
+            yaml_dict = ppd.return_yaml_dict()
             self.dict_list.append(yaml_dict)
-            self.success_count += 1
+            #self.success_count += 1
             return ppd
 
         else:
@@ -241,6 +263,10 @@ class PR2(object):
         rospy.wait_for_service('pick_place_routine')
 
         try:
+            pick_place_routine = rospy.ServiceProxy('pick_place_routine', PickPlace)
+
+            print('Sending pick and place data and waiting for response')
+
             resp = pick_place_routine(ppd.test_scene_num,
                                       ppd.object_name,
                                       ppd.arm_name,
@@ -260,7 +286,7 @@ class PR2(object):
 
         # Get scene number from launch file
         test_scene_num = rospy.get_param('/test_scene_num')
-        print("test_scene_num = %d"% test_scene_num)
+        #print("test_scene_num = %d"% test_scene_num)
 
         # Get dropbox parameters
         dropbox_param = rospy.get_param('/dropbox')
@@ -269,36 +295,43 @@ class PR2(object):
         for dropbox in dropbox_param:
             dropboxdata = dropbox_data(dropbox['position'], dropbox['name'])
             self.dropbox_dict[dropbox['group']] = dropboxdata
+            #print('Acquired dropbox data: {}'.format(dropboxdata))
+            #print('self.dropbox_dict: {}'.format(self.dropbox_dict))
 
         # TODO: Loop through the pick list
         picked = []
-        self.publish_collision_map('', picked)
-        # for obj in object_list_param:
-        #     #get ppd object containing pick and place parameters
-        #     ppd = self.find_pick_object(obj)
+        #self.publish_collision_map('', picked)
+        for obj in object_list_param:
+            #get ppd object containing pick and place parameters
+            ppd = self.find_pick_object(obj)
 
-        #     #if successful, request that pick_place_routine service
-        #     #publish all other objects + table to collision map
-        #     #get the object
-        #     if ppd is not None:
-        #         self.publish_collision_map(obj, picked)
-        #         self.get_pick_object(ppd)
+            #if successful, request that pick_place_routine service
+            #publish all other objects + table to collision map
+            #get the object
+            if ppd is not None:
+                #update list of picked objects
+                picked.append(obj['name'])
+                self.success_count += 1
+                print('Successfully identified object ({0}) at pick pose point {1}'.format(obj['name'], ppd.pick_pose_point))
 
-        #         #update list of picked objects
-        #         picked.append(obj['name'])
+                self.publish_collision_map(obj, picked)
+                self.get_pick_object(ppd)
 
-        # # TODO: Output your request parameters into output yaml file
-        # if self.max_success_count < self.success_count:
-        #     yaml_filename = "./output/output_" + str(test_scene_num.data) + ".yaml"
-        #     print("output file name = %s" % yaml_filename)
-        #     self.send_to_yaml(yaml_filename, self.dict_list)
-        #     self.max_success_count = success_count
+        # TODO: Output your request parameters into output yaml file
+        #if self.max_success_count < self.success_count:
+        if False:#not self.yaml_saved:
+            yaml_filename = "./output/output_" + str(ppd.test_scene_num.data) + ".yaml"
+            print("output file name = %s" % yaml_filename)
+            self.send_to_yaml(yaml_filename, self.dict_list)
+            #self.max_success_count = success_count
+            self.yaml_saved = True
 
-        # print("Success picking up object number = %d" % success_count)
+            print("Successfully picked up {0} of {1} objects".format(self.success_count, len(object_list_param)))
 
     def pcl_callback(self, pcl_msg):
         # TODO: Rotate PR2 in place to capture side tables for the collision map
-        #self.capture_collision_map()
+        #if not self.collision_map_complete:
+        #    self.capture_collision_map()
 
         #segment scene and detect objects
         self.segment_scene(pcl_msg)
@@ -319,10 +352,8 @@ def main():
 
     #pr2.capture_collision_map()
 
-    pr2_pose_sub = rospy.Subscriber("joint_states", JointState, pr2.joint_state_handler, queue_size = 1)
     #initialize point cloud subscriber
     pcl_sub = rospy.Subscriber("/pr2/world/points", pc2.PointCloud2, pr2.pcl_callback, queue_size=1)
-    
 
     rospy.spin()
 
