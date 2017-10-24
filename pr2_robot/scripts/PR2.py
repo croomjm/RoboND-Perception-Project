@@ -25,6 +25,7 @@ class dropbox_data(object):
     def __init__(self, position, arm):
         self.pos = position
         self.arm = arm
+
     def show():
         print("arm = {0:s}, pos = {1:f}".format(self.arm, self.pos))
 
@@ -176,8 +177,8 @@ class PR2(object):
         goal_positions = [n*1.0/increments*(goal-position) + position for n in range(1, increments + 1)]
         for i, g in enumerate(goal_positions):
             print('Publishing goal {0}: {1}'.format(i, g))
-            pub_j1.publish(g)
             while abs(position - g) > .005:
+                pub_j1.publish(g)
                 position = self.get_world_joint_state()
                 print('Position: {0}, Error: {1}'.format(position, abs(position - g)))
                 rospy.sleep(1)
@@ -228,9 +229,9 @@ class PR2(object):
 
             # TODO: Get the PointCloud for a given object and obtain it's centroid
             ppd.object_name.data = name
-            ppd.pick_pose_point.x = np.asscalar(pos[0])
+            ppd.pick_pose_point.x = np.asscalar(pos[0]) - .05
             ppd.pick_pose_point.y = np.asscalar(pos[1])
-            ppd.pick_pose_point.z = np.asscalar(pos[2])# - 0.1
+            ppd.pick_pose_point.z = np.asscalar(pos[2]) - 0.15
             ppd.pick_pose.position = ppd.pick_pose_point
 
             # TODO: Create 'place_pose' for the object
@@ -319,7 +320,7 @@ class PR2(object):
 
         # TODO: Output your request parameters into output yaml file
         #if self.max_success_count < self.success_count:
-        if False:#not self.yaml_saved:
+        if not self.yaml_saved:
             yaml_filename = "./output/output_" + str(ppd.test_scene_num.data) + ".yaml"
             print("output file name = %s" % yaml_filename)
             self.send_to_yaml(yaml_filename, self.dict_list)
@@ -330,8 +331,8 @@ class PR2(object):
 
     def pcl_callback(self, pcl_msg):
         # TODO: Rotate PR2 in place to capture side tables for the collision map
-        #if not self.collision_map_complete:
-        #    self.capture_collision_map()
+        if not self.collision_map_complete:
+            self.capture_collision_map()
 
         #segment scene and detect objects
         self.segment_scene(pcl_msg)
