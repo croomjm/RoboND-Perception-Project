@@ -109,9 +109,11 @@ class PR2(object):
         return position
 
     def segment_scene(self, pcl_msg):
+        print('Initializing segmenter.')
         seg = self.segmenter #to reduce verbosity below
 
         # TODO: Convert ROS msg to PCL data
+        print('Converting ROS message to pcl format.')
         cloud = ros_to_pcl(pcl_msg)
         leaf_size = 0.005
 
@@ -306,6 +308,7 @@ class PR2(object):
         for obj in object_list_param:
             #get ppd object containing pick and place parameters
             ppd = self.find_pick_object(obj)
+            self.success_count = 0
 
             #if successful, request that pick_place_routine service
             #publish all other objects + table to collision map
@@ -316,13 +319,17 @@ class PR2(object):
                 self.success_count += 1
                 print('Successfully identified object ({0}) at pick pose point {1}'.format(obj['name'], ppd.pick_pose_point))
 
+                #republish collision map excluding the objects that have been picked
                 #self.publish_collision_map(obj, picked)
+
+                #commented out because my computer is too slow...
+                #grab the object and drop in the bin
                 #self.get_pick_object(ppd)
 
 
         # TODO: Output your request parameters into output yaml file
         #if self.max_success_count < self.success_count:
-        if not self.yaml_saved:
+        if not self.yaml_saved or True:
             yaml_filename = "./output/output_" + str(ppd.test_scene_num.data) + ".yaml"
             print("output file name = %s" % yaml_filename)
             self.send_to_yaml(yaml_filename, self.dict_list)
@@ -333,6 +340,7 @@ class PR2(object):
 
     def pcl_callback(self, pcl_msg):
         # TODO: Rotate PR2 in place to capture side tables for the collision map
+        # commented out because this runs too slowly on my machine
         #if not self.collision_map_complete:
         #    self.capture_collision_map()
 
@@ -344,8 +352,6 @@ class PR2(object):
         self.mover()
 
 def main():
-    #model_file = '../training/model_sigmoid_300_orientations.sav'
-    #model_file = '../training/model_sigmoid_50_orientations_YCbCr.sav'
     model_file = '../training/model_100_orientations_sigmoid_YCbCr_16_bin.sav'
 
     # TODO: ROS node initialization
@@ -353,6 +359,7 @@ def main():
 
     pr2 = PR2(model_file)
 
+    #commented out because this is too slow on my machine
     #pr2.capture_collision_map()
 
     #initialize point cloud subscriber
