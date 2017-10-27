@@ -40,6 +40,9 @@ class pick_place_data(object):
         self.pick_pose_point = Point()
         self.place_pose_point = Point()
 
+        # Get scene number from launch file
+        self.test_scene_num.data = rospy.get_param('/test_scene_num')
+
     def return_yaml_dict(self):
         # Return a yaml friendly dictionary of ppd attributes
         yaml_dict = {}
@@ -47,6 +50,7 @@ class pick_place_data(object):
         yaml_dict["arm_name"]  = self.arm_name.data
         yaml_dict["object_name"] = self.object_name.data
         yaml_dict["pick_pose"] = message_converter.convert_ros_message_to_dictionary(self.pick_pose)
+        yaml_dict["place_pose"] = message_converter.convert_ros_message_to_dictionary(self.place_pose)
         yaml_dict["place_pose"] = message_converter.convert_ros_message_to_dictionary(self.place_pose)
         return yaml_dict
 
@@ -285,10 +289,6 @@ class PR2(object):
         # TODO: Get/Read parameters
         object_list_param = rospy.get_param('/object_list')
 
-        # Get scene number from launch file
-        test_scene_num = rospy.get_param('/test_scene_num')
-        #print("test_scene_num = %d"% test_scene_num)
-
         # Get dropbox parameters
         dropbox_param = rospy.get_param('/dropbox')
 
@@ -301,6 +301,7 @@ class PR2(object):
 
         # TODO: Loop through the pick list
         picked = []
+        
         #self.publish_collision_map('', picked)
         for obj in object_list_param:
             #get ppd object containing pick and place parameters
@@ -315,8 +316,9 @@ class PR2(object):
                 self.success_count += 1
                 print('Successfully identified object ({0}) at pick pose point {1}'.format(obj['name'], ppd.pick_pose_point))
 
-                self.publish_collision_map(obj, picked)
-                self.get_pick_object(ppd)
+                #self.publish_collision_map(obj, picked)
+                #self.get_pick_object(ppd)
+
 
         # TODO: Output your request parameters into output yaml file
         #if self.max_success_count < self.success_count:
@@ -331,8 +333,8 @@ class PR2(object):
 
     def pcl_callback(self, pcl_msg):
         # TODO: Rotate PR2 in place to capture side tables for the collision map
-        if not self.collision_map_complete:
-            self.capture_collision_map()
+        #if not self.collision_map_complete:
+        #    self.capture_collision_map()
 
         #segment scene and detect objects
         self.segment_scene(pcl_msg)
