@@ -65,10 +65,10 @@ class PR2(object):
         self.color_list = []
         self.yaml_saved = False
         self.collision_map_complete = False
-        self.goal_positions = [0, -1.0, 1.0]
+        self.goal_positions = [0] #[0, -1.0, 1.0] uncomment to rotate robot
 
         self.table_cloud = None
-        self.collision_map_base_list = None
+        self.collision_map_base_list = []
         self.detected_objects = None
 
         #load SVM object classifier
@@ -83,7 +83,7 @@ class PR2(object):
         #self.colorized_cluster_pub = rospy.Publisher("/colorized_clusters", PointCloud2, queue_size=1)
         self.object_markers_pub = rospy.Publisher("/object_markers", Marker, queue_size=1)
         self.detected_objects_pub = rospy.Publisher("/detected_objects", DetectedObjectsArray, queue_size = 1)
-        #self.denoised_pub = rospy.Publisher("/denoised_cloud", PointCloud2, queue_size = 1)
+        self.denoised_pub = rospy.Publisher("/denoised_cloud", PointCloud2, queue_size = 1)
         #self.reduced_cloud_pub = rospy.Publisher("/decimated_cloud", PointCloud2, queue_size = 1)
 
         self.collision_cloud_pub = rospy.Publisher("/pr2/3d_map/points", PointCloud2, queue_size = 1)
@@ -158,7 +158,7 @@ class PR2(object):
         # TODO: Publish ROS messages
         print('Converting PCL data to ROS messages.')
         message_pairs = [#(decimated_cloud, self.reduced_cloud_pub),
-                         #(denoised_cloud, self.denoised_pub),
+                         (denoised_cloud, self.denoised_pub),
                          (objects_cloud, self.objects_pub)
                          #(table_cloud, self.table_pub),
                          #(colorized_object_clusters, self.colorized_cluster_pub)
@@ -194,11 +194,12 @@ class PR2(object):
                 rospy.sleep(1)
 
     def build_collision_map(self):
+        # update this to include drop box object cloud as well
+        # would need to train SVM for this
         self.collision_map_base_list.extend(list(self.table_cloud))
 
     def publish_collision_map(self,picked_objects):
-        #obstacle_cloud_list = self.collision_map_base_list
-        obstacle_cloud_list = list(self.table_cloud)
+        obstacle_cloud_list = self.collision_map_base_list
 
         for obj in self.detected_objects:
             if obj.label not in picked_objects:
@@ -206,6 +207,8 @@ class PR2(object):
                 obj_cloud = ros_to_pcl(obj.cloud)
                 obstacle_cloud_list.extend(list(obj_cloud))
                 #print(obstacle_cloud)
+            else:
+                print('Not adding {0} to collision map because it appears in the picked object list'.format(obj.label))
 
         obstacle_cloud = pcl.PointCloud_PointXYZRGB()
         obstacle_cloud.from_list(obstacle_cloud_list)
@@ -237,8 +240,8 @@ class PR2(object):
             # TODO: Create 'place_pose' for the object
             dropboxdata = self.dropbox_dict[group]
             #randomize x postion for drop to keep objects from piling up
-            ppd.place_pose_point.x = dropboxdata.pos[0]-uniform(0,.1)
-            ppd.place_pose_point.y = dropboxdata.pos[1]
+            ppd.place_pose_point.x = dropboxdata.pos[0]-uniform(.1,.2)
+            ppd.place_pose_point.y = dropboxdata.pos[1] + uniform(-.03, .03)
             ppd.place_pose_point.z = dropboxdata.pos[2]
             ppd.place_pose.position = ppd.place_pose_point
 
@@ -314,6 +317,7 @@ class PR2(object):
                 print('Successfully identified object ({0}) at pick pose point {1}'.format(obj['name'], ppd.pick_pose_point))
 
                 #republish collision map excluding the objects that have been picked
+                #currently the map is not refreshing each iteration...
                 self.publish_collision_map(picked)
 
                 #commented out because my computer is too slow...
@@ -323,7 +327,7 @@ class PR2(object):
 
         # TODO: Output your request parameters into output yaml file
         #if self.max_success_count < self.success_count:
-        if not self.yaml_saved or True:
+        if not self.yaml_saved:
             yaml_filename = "./output/output_" + str(ppd.test_scene_num.data) + ".yaml"
             print("output file name = %s" % yaml_filename)
             self.send_to_yaml(yaml_filename, self.dict_list)
@@ -337,17 +341,18 @@ class PR2(object):
         # commented out world joint rotation because it runs very slowly on my machine
         # ideally would want to train SVM to recognize boxes, then add them plus the
         # table to the base collision map
+
         if len(self.goal_positions)>0:
             new_position = self.goal_positions.pop()
-            # self.move_world_joint(new_position)
+            self.move_world_joint(new_position)
 
-            # #segment scene and detect objects
-            # self.segment_scene(pcl_msg)
+            #segment scene and detect objects
+            self.segment_scene(pcl_msg)
 
-            # #add the table to the base collision map
-            # self.build_collision_map()
+            #add obstacles (except for recognized pick objects)
+            #to the base collision map
+            self.build_collision_map()
         else:
-            self.segment_scene()
             #identify the objects listed in the pick list
             #submit them to the pick_place_routine
             self.mover()
