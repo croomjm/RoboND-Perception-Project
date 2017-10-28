@@ -6,6 +6,7 @@ from sensor_stick.msg import DetectedObjectsArray
 from sensor_stick.msg import DetectedObject
 from sensor_stick.pcl_helper import *
 from math import pi
+from random import uniform
 
 import rospy
 import tf
@@ -64,6 +65,7 @@ class PR2(object):
         self.color_list = []
         self.yaml_saved = False
         self.collision_map_complete = False
+        self.goal_positions = [0, -1.0, 1.0]
 
         self.table_cloud = None
         self.collision_map_base_list = None
@@ -120,12 +122,12 @@ class PR2(object):
         # TODO: Voxel Grid Downsampling
         print('Reducing voxel resolution.')
         cloud = seg.voxel_grid_downsample(cloud, leaf_size = leaf_size)
-        decimated_cloud = cloud
+        #decimated_cloud = cloud
 
         #Reduce outlier noise in object cloud
         print('Rejecting outliers in raw cloud.')
         cloud = seg.outlier_filter(cloud, 15, 0.01)
-        #denoised_cloud = cloud
+        denoised_cloud = cloud
 
         # TODO: PassThrough Filter
         print('Applying passthrough filters.')
@@ -175,8 +177,10 @@ class PR2(object):
         self.detected_objects = detected_objects
         self.table_cloud = table_cloud
 
-    def move_world_joint(self, goal, pub_j1):
+    def move_world_joint(self, goal):
         print('Attempting to move world joint to {}'.format(goal))
+        pub_j1 = rospy.Publisher('/pr2/world_joint_controller/command',
+                                 Float64, queue_size=10)
         increments = 10
         position = self.get_world_joint_state()
 
@@ -189,29 +193,19 @@ class PR2(object):
                 print('Position: {0}, Error: {1}'.format(position, abs(position - g)))
                 rospy.sleep(1)
 
-    def capture_collision_map(self):
-        #publish joint positins from 0 to 2*pi to survey entire environment
-        pub_j1 = rospy.Publisher('/pr2/world_joint_controller/command',
-                                 Float64, queue_size=10)
+    def build_collision_map(self):
+        self.collision_map_base_list.extend(list(self.table_cloud))
 
-        print('Sending new world_joint state goal.')
-
-        goal_positions = [-pi/2, pi/2, 0]
-
-        for g in goal_positions:
-            self.move_world_joint(g, pub_j1)
-            self.segment_scene()
-            self.collision_map_base_list.extend(list(self.table_cloud))
-
-    def publish_collision_map(self,object_name,picked_objects):
+    def publish_collision_map(self,picked_objects):
         #obstacle_cloud_list = self.collision_map_base_list
         obstacle_cloud_list = list(self.table_cloud)
 
-        # for obj in self.detected_objects:
-        #     if obj.label != object_name and obj.label not in picked_objects:
-        #         obj_cloud = ros_to_pcl(obj.cloud)
-        #         obstacle_cloud_list.extend(list(obj_cloud))
-        #         #print(obstacle_cloud)
+        for obj in self.detected_objects:
+            if obj.label not in picked_objects:
+                print('Adding {0} to collision map.'.format(obj.label))
+                obj_cloud = ros_to_pcl(obj.cloud)
+                obstacle_cloud_list.extend(list(obj_cloud))
+                #print(obstacle_cloud)
 
         obstacle_cloud = pcl.PointCloud_PointXYZRGB()
         obstacle_cloud.from_list(obstacle_cloud_list)
@@ -235,14 +229,15 @@ class PR2(object):
 
             # TODO: Get the PointCloud for a given object and obtain it's centroid
             ppd.object_name.data = name
-            ppd.pick_pose_point.x = np.asscalar(pos[0]) - .05
+            ppd.pick_pose_point.x = np.asscalar(pos[0])
             ppd.pick_pose_point.y = np.asscalar(pos[1])
-            ppd.pick_pose_point.z = np.asscalar(pos[2]) - 0.15
+            ppd.pick_pose_point.z = np.asscalar(pos[2])
             ppd.pick_pose.position = ppd.pick_pose_point
 
             # TODO: Create 'place_pose' for the object
             dropboxdata = self.dropbox_dict[group]
-            ppd.place_pose_point.x = dropboxdata.pos[0]
+            #randomize x postion for drop to keep objects from piling up
+            ppd.place_pose_point.x = dropboxdata.pos[0]-uniform(0,.1)
             ppd.place_pose_point.y = dropboxdata.pos[1]
             ppd.place_pose_point.z = dropboxdata.pos[2]
             ppd.place_pose.position = ppd.place_pose_point
@@ -257,7 +252,6 @@ class PR2(object):
             # for later output to yaml format
             yaml_dict = ppd.return_yaml_dict()
             self.dict_list.append(yaml_dict)
-            #self.success_count += 1
             return ppd
 
         else:
@@ -303,12 +297,12 @@ class PR2(object):
 
         # TODO: Loop through the pick list
         picked = []
-        
+        self.success_count = 0
+
         #self.publish_collision_map('', picked)
         for obj in object_list_param:
             #get ppd object containing pick and place parameters
             ppd = self.find_pick_object(obj)
-            self.success_count = 0
 
             #if successful, request that pick_place_routine service
             #publish all other objects + table to collision map
@@ -320,11 +314,11 @@ class PR2(object):
                 print('Successfully identified object ({0}) at pick pose point {1}'.format(obj['name'], ppd.pick_pose_point))
 
                 #republish collision map excluding the objects that have been picked
-                #self.publish_collision_map(obj, picked)
+                self.publish_collision_map(picked)
 
                 #commented out because my computer is too slow...
                 #grab the object and drop in the bin
-                #self.get_pick_object(ppd)
+                self.get_pick_object(ppd)
 
 
         # TODO: Output your request parameters into output yaml file
@@ -340,16 +334,23 @@ class PR2(object):
 
     def pcl_callback(self, pcl_msg):
         # TODO: Rotate PR2 in place to capture side tables for the collision map
-        # commented out because this runs too slowly on my machine
-        #if not self.collision_map_complete:
-        #    self.capture_collision_map()
+        # commented out world joint rotation because it runs very slowly on my machine
+        # ideally would want to train SVM to recognize boxes, then add them plus the
+        # table to the base collision map
+        if len(self.goal_positions)>0:
+            new_position = self.goal_positions.pop()
+            # self.move_world_joint(new_position)
 
-        #segment scene and detect objects
-        self.segment_scene(pcl_msg)
+            # #segment scene and detect objects
+            # self.segment_scene(pcl_msg)
 
-        #identify the objects listed in the pick list
-        #submit them to the pick_place_routine
-        self.mover()
+            # #add the table to the base collision map
+            # self.build_collision_map()
+        else:
+            self.segment_scene()
+            #identify the objects listed in the pick list
+            #submit them to the pick_place_routine
+            self.mover()
 
 def main():
     model_file = '../training/model_100_orientations_sigmoid_YCbCr_16_bin.sav'
