@@ -111,9 +111,9 @@ grasp_list:
           w: 0.628
     biscuits:
         position:
-          x: 0.6
+          x: 0.56
           y: -0.22
-          z: 0.97
+          z: 0.92
         orientation:
           x: 0.34
           y: 0.62
