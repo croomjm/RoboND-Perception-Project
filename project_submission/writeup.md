@@ -84,7 +84,7 @@ if __name__ == '__main__':
    * Separate the objects cloud into separate object clouds with Euclidean clustering using `Segmenter.get_euclidean_cluster_indices(self, cloud, tolerance, size_bounds)`
    * Detect objects with the pre-trained SVM model using `Segmenter.detect_objects(cloud, cluster_indices)`
    * Publish the results of the object detection to RViz labels using `Segmenter.publish_detected_objects(detected_objects, marker_pub, objects_pub)`
-   * Set class variables using the detection results for later use
+   * Set class variables with the detection results for later use
    
   Note: some lines are removed/modified in `segment_scene()` for clarity.
   ```python
@@ -136,13 +136,80 @@ if __name__ == '__main__':
         self.table_cloud = table_cloud
    ```
 
- ### b. Training of SVM (including addition of additional color space, allowing for reducing bin count)
-   #### i. Moved sensor stick to submodule for ease of use in both the project and exercises
-   #### ii. Modifications to capture script
+ ### b. Feature Extraction and Object Detection SVM (including addition of additional color space, allowing for reducing bin count)
+  Put make the sensor stick package a separate repo pulled into the pick and place project repo as a submodule rather than copying it into the perception project or having duplicated training/capture functions for the perception exercises and project.
+  
+  Within sensor_stick, I updated the feature extraction script (sensor_stick/src/sensor_stick/features.py) used to train my object detection SVM in a few key ways:
+   1. Added YCbCr color histogram extraction to my feature vector
+   2. Switched from RGB to HSV color histogram extraction
+   3. Updated the number of histogram bins (normals, HSV color, and YCbCr color) to 16 instead of 32
    
-   #### i. confusion matrix image
- ### c. Object recognition
-## 3. Successful application to test worlds
+  I saw dramatic improvement in the efficacy of my object detection model by using both HSV and YCbCr color spaces even using half as many histogram bins. Both of these color spaces allow for the separation of brightness from the color of the object, which helps remove ambiguity due to the position/orientation of an object relative to a light source (unlike RGB). In order to compensate for the addition of an additional histogram calculation, I reduced the number of bins in each histogram by half. To my surprise, this did not have a significant negative effect on the accuracy of my object detection model, though it did significantly increase the speed with which the histograms could be calculated.
+  
+  The relevant functions are:
+  ```python
+  def compute_color_histograms(cloud):
+       # Compute histograms for the clusters
+       point_colors_list = []
+       points = pc2.read_points(cloud, skip_nans=True)
+
+       # Step through each point in the point cloud
+       for point in points:
+           rgb_list = float_to_rgb(point[3])
+           point_colors_list.append(rgb_to_hsv(rgb_list) * 255)
+           point_colors_list.append(rgb_to_YCbCr(rgb_list))
+
+       normed_features = return_normalized_hist(point_colors_list, bins_range = (0,256))
+
+       return normed_features
+  
+  def rgb_to_hsv(rgb_list):
+       rgb_normalized = [1.0*rgb_list[0]/255, 1.0*rgb_list[1]/255, 1.0*rgb_list[2]/255]
+       hsv_normalized = matplotlib.colors.rgb_to_hsv([[rgb_normalized]])[0][0]
+       return hsv_normalized
+
+  def rgb_to_YCbCr(rgb_list):
+       r, g, b = rgb_list
+
+       Y = 16 + (65.738*r + 129.057*g + 25.064*b)/256.
+       Cb = 128 +  (-37.945*r - 74.203*g + 112.0*b)/256.
+       Cr = 128 + (112.0*r - 93.786*g + 18.214*b)/256.
+
+       YCbCr = [Y, Cb, Cr]
+
+       return YCbCr
+   
+   def return_normalized_hist(features, bins_range, nbins = 16):
+       hist = []
+       features = np.asarray(features)
+       length, depth = features.shape
+
+       for i in range(depth):
+           hist.extend(np.histogram(features[:,i], bins = nbins, range = bins_range)[0])
+
+       hist = hist/np.sum(hist).astype(np.float)
+
+       return hist
+   ```
+   
+   I ultimate trained my object detection SVM using 100 random orientations of each object. After some experimentation, I chose to use a sigmoid kernel because it seemed to generate the most repeatable and accurate object labels. My confusion matrix results are shown below:
+   
+   ![Normalized Confusion Matrix][normalized_confusion_matrix]
+
+## 3. Successful Object Detection in Each Test World
+ My object detection SVM was relatively successful in identifying the objects in the 3 test worlds. I achieved the following correctly identified object detection rates:
+  * Test World 1: 3 of 3 (100%) 
+  * Test World 2: 5 of 5 (100%)
+  * Test World 3: 7 of 8 (88%)
+  
+ Here are the camera views as captured in RViz:
+  ![Test World 1][test_world_1_result]
+  
+  ![Test World 2][test_world_2_result]
+    
+  ![Test World 3][test_world_3_result]
+  
+ 
  ### a. images of each result with links to the yaml outputs
 ## 4. Successful pick and place!
 ## 5. Building collision map
