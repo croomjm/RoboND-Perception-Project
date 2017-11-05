@@ -174,12 +174,15 @@ if __name__ == '__main__':
  Here are the camera views as captured in RViz:
  
   Test World 1
+  
   ![Test World 1][test_world_1_result]
   
   Test World 2
+  
   ![Test World 2][test_world_2_result]
   
   Test World 3
+  
   ![Test World 3][test_world_3_result]
 
 ## 4. Successful Pick and Place!
@@ -279,7 +282,8 @@ if __name__ == '__main__':
  ![Put a bird on it!][shadow_puppets]
  
  Dramatic reenactment:
- ![Colbert??][https://gph.is/29Xkwyz]
+ 
+ ![Colbert??](https://media.giphy.com/media/l46Cs9TmyCLhpVHsA/giphy.gif)
  
 ## 7. Potential Improvements:
  There are still a number of things I would like to improve if I were to continue working on this project.
