@@ -49,7 +49,7 @@
  When the PR2.py script starts up, it instantiates the `PR2()` class and passes incoming pointcloud messages to `PR2.pcl_callback()`.
  
  ```python
- ef main():
+ def main():
     model_file = '../training/model_100_orientations_sigmoid_YCbCr_16_bin.sav'
 
     # ROS node initialization
@@ -76,13 +76,15 @@ if __name__ == '__main__':
   The order of operations implemented in `PR2.segment_scene()` is as follows:
    * Initialize the `Segmenter()` class
    * Convert the ROS point cloud message to point cloud library format
-   * Remove outliers from the point cloud
-   * Apply a passthrough filter to remove points below the table and the front edge of the table
-   * Use RANSAC plane segmentation to separate the table surface points from object points
+   * Downsample the point cloud to a more manageable density using `Segmenter.voxel_grid_downsample(cloud, leaf_size)`
+   * Remove outliers from the point cloud using `Segmenter.outlier_filter(cloud, n_neighbors, threshhold_scale)`
+   * Apply a passthrough filter to remove points below the table and the front edge of the table using `Segmenter.axis_passthrough_filter(self, cloud, axis, bounds)`
+   * Use RANSAC plane segmentation to separate the table surface points from object points using `Segmenter.ransac_plane_segmentation(cloud, max_distance)`
    * Apply a secondary outlier filter to the object clouds
-   * Separate the objects cloud into separate object clouds using Euclidean clustering
-   * Detect objects using the pre-trained SVM model
-   * Publish the results of the object detection to RViz labels and set class variables using the detection results for later use
+   * Separate the objects cloud into separate object clouds with Euclidean clustering using `Segmenter.get_euclidean_cluster_indices(self, cloud, tolerance, size_bounds)`
+   * Detect objects with the pre-trained SVM model using `Segmenter.detect_objects(cloud, cluster_indices)`
+   * Publish the results of the object detection to RViz labels using `Segmenter.publish_detected_objects(detected_objects, marker_pub, objects_pub)`
+   * Set class variables using the detection results for later use
    
   Note: some lines are removed/modified in `segment_scene()` for clarity.
   ```python
