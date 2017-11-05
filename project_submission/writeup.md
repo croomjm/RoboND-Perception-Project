@@ -40,12 +40,104 @@
 
 # Project: Perception Pick & Place
 ## 1. Structure of main program
- ### a. PR2, dropbox, ppd, and segmenter classes
- ### b. main function with PCL callback to PR2
- ### c. implemented sensor stick as git submodule with separate repo to simplify things
+ My first step in this project was to improve the organization and modularity of the project code. I chose to break the primary functions of the code into a few classes:
+ * `PR2()`: This primary class contains most of the functions of the robot, including the `pcl_callback()` method, which responds to new pointcloud messages from the `/pr2/world/points` topic.
+ * `Segmenter()`: This class contains all of the perception methods required to process the point cloud, detect objects, and publish object markers. It is instantiated and utilized within `PR2()`. `Segmenter()` is kept in a separate file from the main python file from the main PR2 file.
+ * `dropbox_data()`: A container class for the pick and place dropbox requests passed to the robot from the `/dropbox` topic
+ * `pick_place_data()`: A container class for the pick and place requests that are passed from the robot to `pick_place_routine` service in order to pick and place detected objects
+ 
+ When the PR2.py script starts up, it instantiates the `PR2()` class and passes incoming pointcloud messages to `PR2.pcl_callback()`.
+ 
+ ```python
+ ef main():
+    model_file = '../training/model_100_orientations_sigmoid_YCbCr_16_bin.sav'
+
+    # ROS node initialization
+    rospy.init_node('pr2', anonymous=True)
+
+    pr2 = PR2(model_file)
+
+    #initialize point cloud subscriber
+    pcl_sub = rospy.Subscriber("/pr2/world/points", pc2.PointCloud2, pr2.pcl_callback, queue_size=1)
+
+    rospy.spin()
+
+if __name__ == '__main__':
+    try:
+        main()
+    except:
+        pass
+```
+
 ## 2. Perception pipeline and segmenter class
  ### a. Filtering, RANSAC plane filtering, object clustering
+  In order to interpret the point cloud message, significant processing was required. I tackled this problem by making separate methods for all of the processing steps that are required in the pick and place project, then calling them in the appropriate order and with experimentally determined parameters in order to achieve the desired result: accurate segmentation of object clusters.
+  
+  The order of operations implemented in `PR2.segment_scene()` is as follows:
+   * Initialize the `Segmenter()` class
+   * Convert the ROS point cloud message to point cloud library format
+   * Remove outliers from the point cloud
+   * Apply a passthrough filter to remove points below the table and the front edge of the table
+   * Use RANSAC plane segmentation to separate the table surface points from object points
+   * Apply a secondary outlier filter to the object clouds
+   * Separate the objects cloud into separate object clouds using Euclidean clustering
+   * Detect objects using the pre-trained SVM model
+   * Publish the results of the object detection to RViz labels and set class variables using the detection results for later use
+   
+  Note: some lines are removed/modified in `segment_scene()` for clarity.
+  ```python
+  def segment_scene(self, pcl_msg):
+        seg = self.segmenter #to reduce verbosity below
+
+        # Convert ROS msg to PCL data
+        cloud = ros_to_pcl(pcl_msg)
+        leaf_size = 0.005
+
+        # Voxel Grid Downsampling
+        cloud = seg.voxel_grid_downsample(cloud, leaf_size = leaf_size)
+
+        # Reduce outlier noise in object cloud
+        cloud = seg.outlier_filter(cloud, 15, 0.01)
+        # Save this to publish to RViz
+        denoised_cloud = cloud
+
+        # Passthrough Filter
+        cloud = seg.axis_passthrough_filter(cloud, 'z', (0.55, 2)) #filter below table
+        cloud = seg.axis_passthrough_filter(cloud, 'x', (.35, 10)) #filter out table front edge
+
+        # RANSAC Plane Segmentation
+        # Extract inliers and outliers
+        table_cloud, objects_cloud = seg.ransac_plane_segmentation(cloud, max_distance = leaf_size)
+
+        #Reduce outlier noise in object cloud
+        objects_cloud = seg.outlier_filter(objects_cloud, 10, 0.01)
+
+        # Euclidean Clustering and Object Detection
+        cluster_indices = seg.get_euclidean_cluster_indices(objects_cloud, 0.03, (10,5000))
+        detected_objects, detected_objects_dict = seg.detect_objects(objects_cloud, cluster_indices)
+        
+        # Convert PCL data to ROS messages
+        # Publish ROS messages
+        message_pairs = [(denoised_cloud, self.denoised_pub),
+                         (objects_cloud, self.objects_pub)
+                         ]
+        
+        seg.convert_and_publish(message_pairs)
+
+        #publish detected objects and labels
+        seg.publish_detected_objects(detected_objects,
+                                     self.object_markers_pub,
+                                     self.detected_objects_pub)
+
+        self.object_list = detected_objects_dict
+        self.detected_objects = detected_objects
+        self.table_cloud = table_cloud
+   ```
+
  ### b. Training of SVM (including addition of additional color space, allowing for reducing bin count)
+   #### i. Moved sensor stick to submodule for ease of use in both the project and exercises
+   #### ii. Modifications to capture script
+   
    #### i. confusion matrix image
  ### c. Object recognition
 ## 3. Successful application to test worlds
@@ -63,6 +155,7 @@
  ### d. Investigate why the collision map does not update correctly after each object is picked
  ### e. Learn to determine whether the object was successfully dropped in the box, and attempt to pick it up again if not
   #### i. would require a change in architecture since now pointcloud is only passed in before the pick and place routine starts
+ ### f. Improve the efficiency of the capture script by vectorizing the histogram processing in numpy
 
 
 ### Writeup / README
