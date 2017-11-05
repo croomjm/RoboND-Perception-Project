@@ -112,6 +112,11 @@ if __name__ == '__main__':
    1. Added YCbCr color histogram extraction to my feature vector
    2. Switched from RGB to HSV color histogram extraction
    3. Updated the number of histogram bins (normals, HSV color, and YCbCr color) to 16 instead of 32
+ 
+  My features.py, train_svm.py, and capture_features.py files can be found within the sensor_stick submodule here:
+   * [features.py](https://github.com/croomjm/RoboND-Perception-Exercises_sensor_stick/blob/upstream-sensor_stick/src/sensor_stick/features.py)
+   * [capture_features.py](https://github.com/croomjm/RoboND-Perception-Exercises_sensor_stick/blob/upstream-sensor_stick/scripts/capture_features.py)
+   * [train_svm.py](https://github.com/croomjm/RoboND-Perception-Exercises_sensor_stick/blob/upstream-sensor_stick/scripts/train_svm.py)
    
   I saw dramatic improvement in the efficacy of my object detection model by using both HSV and YCbCr color spaces even using half as many histogram bins. Both of these color spaces allow for the separation of brightness from the color of the object, which helps remove ambiguity due to the position/orientation of an object relative to a light source (unlike RGB). In order to compensate for the addition of an additional histogram calculation, I reduced the number of bins in each histogram by half. To my surprise, this did not have a significant negative effect on the accuracy of my object detection model, though it did significantly increase the speed with which the histograms could be calculated.
   
