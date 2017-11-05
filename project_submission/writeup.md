@@ -1,33 +1,3 @@
-## Project: Perception Pick & Place
-### Writeup Template: You can use this file as a template for your writeup if you want to submit it as a markdown file, but feel free to use some other method and submit a pdf if you prefer.
-
----
-
-
-# Required Steps for a Passing Submission:
-1. Extract features and train an SVM model on new objects (see `pick_list_*.yaml` in `/pr2_robot/config/` for the list of models you'll be trying to identify). 
-2. Write a ROS node and subscribe to `/pr2/world/points` topic. This topic contains noisy point cloud data that you must work with.
-3. Use filtering and RANSAC plane fitting to isolate the objects of interest from the rest of the scene.
-4. Apply Euclidean clustering to create separate clusters for individual items.
-5. Perform object recognition on these objects and assign them labels (markers in RViz).
-6. Calculate the centroid (average in x, y and z) of the set of points belonging to that each object.
-7. Create ROS messages containing the details of each object (name, pick_pose, etc.) and write these messages out to `.yaml` files, one for each of the 3 scenarios (`test1-3.world` in `/pr2_robot/worlds/`).  [See the example `output.yaml` for details on what the output should look like.](https://github.com/udacity/RoboND-Perception-Project/blob/master/pr2_robot/config/output.yaml)  
-8. Submit a link to your GitHub repo for the project or the Python code for your perception pipeline and your output `.yaml` files (3 `.yaml` files, one for each test world).  You must have correctly identified 100% of objects from `pick_list_1.yaml` for `test1.world`, 80% of items from `pick_list_2.yaml` for `test2.world` and 75% of items from `pick_list_3.yaml` in `test3.world`.
-9. Congratulations!  Your Done!
-
-# Extra Challenges: Complete the Pick & Place
-7. To create a collision map, publish a point cloud to the `/pr2/3d_map/points` topic and make sure you change the `point_cloud_topic` to `/pr2/3d_map/points` in `sensors.yaml` in the `/pr2_robot/config/` directory. This topic is read by Moveit!, which uses this point cloud input to generate a collision map, allowing the robot to plan its trajectory.  Keep in mind that later when you go to pick up an object, you must first remove it from this point cloud so it is removed from the collision map!
-8. Rotate the robot to generate collision map of table sides. This can be accomplished by publishing joint angle value(in radians) to `/pr2/world_joint_controller/command`
-9. Rotate the robot back to its original state.
-10. Create a ROS Client for the “pick_place_routine” rosservice.  In the required steps above, you already created the messages you need to use this service. Checkout the [PickPlace.srv](https://github.com/udacity/RoboND-Perception-Project/tree/master/pr2_robot/srv) file to find out what arguments you must pass to this service.
-11. If everything was done correctly, when you pass the appropriate messages to the `pick_place_routine` service, the selected arm will perform pick and place operation and display trajectory in the RViz window
-12. Place all the objects from your pick list in their respective dropoff box and you have completed the challenge!
-13. Looking for a bigger challenge?  Load up the `challenge.world` scenario and see if you can get your perception pipeline working there!
-
-## [Rubric](https://review.udacity.com/#!/rubrics/1067/view) Points
-### Here I will consider the rubric points individually and describe how I addressed each point in my implementation.  
-
----
 [//]: # (Image References)
 [normalized_confusion_matrix]: ./images/Normalized_confusion_matrix.png
 [raw_confusion_matrix]: ./images/Raw_confusion_matrix.png
@@ -36,9 +6,8 @@
 [test_world_2_result]: ./images/test_world_2.png
 [test_world_3_result]: ./images/test_world_3.png
 
-[![Successful Pick and Place Run](https://img.youtube.com/vi/bGgx0UMarA0/0.jpg)](https://www.youtube.com/watch?v=bGgx0UMarA0)
-
 # Project: Perception Pick & Place
+
 ## 1. Structure of main program
  My first step in this project was to improve the organization and modularity of the project code. I chose to break the primary functions of the code into a few classes:
  * `PR2()`: This primary class contains most of the functions of the robot, including the `pcl_callback()` method, which responds to new pointcloud messages from the `/pr2/world/points` topic.
@@ -198,59 +167,127 @@ if __name__ == '__main__':
 
 ## 3. Successful Object Detection in Each Test World
  My object detection SVM was relatively successful in identifying the objects in the 3 test worlds. I achieved the following correctly identified object detection rates:
-  * Test World 1: 3 of 3 (100%) 
-  * Test World 2: 5 of 5 (100%)
-  * Test World 3: 7 of 8 (88%)
-  
+  * Test World 1 ([see yaml](./output_1.yaml)): 3 of 3 (100%)
+  * Test World 2 ([see yaml](./output_2.yaml)): 5 of 5 (100%)
+  * Test World 3 ([see yaml](./output_3.yaml)): 7 of 8 (88%)
+ 
  Here are the camera views as captured in RViz:
   ![Test World 1][test_world_1_result]
   
   ![Test World 2][test_world_2_result]
     
   ![Test World 3][test_world_3_result]
-  
- 
- ### a. images of each result with links to the yaml outputs
+
 ## 4. Successful pick and place!
+ With the collision map in place and a fairly accurate object detection SVM, I was able to successfully pick and place objects! Here's a video of a successful run.
+ 
+ [![Successful Pick and Place Run](https://img.youtube.com/vi/bGgx0UMarA0/0.jpg)](https://www.youtube.com/watch?v=bGgx0UMarA0)
+ 
+ Unfortunately, since I had trouble updating the collision map after each successive object was picked, I was only able to pick and place a single object with the collision map enabled. With the collision map disabled, I was able to pick multiple objects in a row, though there was some uncertaintly in whether they would make it to the drop box intact...
+ 
+ I found that even when the correct grasp location was passed to the pick and place service, repeatability was a serious problem. I also was not able to test out the pick and place function on larger object sets due to performance limitations on my laptop. Gazebo + RViz is quite heavy, especially within the virtual machine (running on only 2 cores).
+
 ## 5. Building collision map
- ### a. Would have added boxes to map, but needed to train SVM on boxes
- ### b. Implemented turn and look, but too slow to run routinely, and didn't have problems colliding with boxes anyway
- ### c. Had trouble getting the collision map to update each iteration even though I was sending a new map to the topic
-## 6. Bugginess of program overall, including shadow puppet pose
+ I first chose to build the collision map without rotating the PR2 world joint. I chose to implement the collision map in two stages. First, I built a baseline map for the static objects that would not be grasped. In the simple case in which the robot does not rotate, this includes only the table. Then, each time I detected the next object in the pick list queue, I appended all other objects that had not yet been picked to the collision map cloud. I then published the collision cloud to the `/pr2/3d_map/points` topic. Unfortunately, for reasons I wasn't able to determine, the collision cloud did not update each time I published a new set of points.
+ 
+ ```python
+ def build_collision_map(self):
+    # update this to include drop box object cloud as well
+    # would need to train SVM for this
+    self.collision_map_base_list.extend(list(self.table_cloud))
+
+ def publish_collision_map(self,picked_objects):
+     obstacle_cloud_list = self.collision_map_base_list
+
+     for obj in self.detected_objects:
+         if obj.label not in picked_objects:
+             print('Adding {0} to collision map.'.format(obj.label))
+             obj_cloud = ros_to_pcl(obj.cloud)
+             obstacle_cloud_list.extend(list(obj_cloud))
+             #print(obstacle_cloud)
+         else:
+             print('Not adding {0} to collision map because it appears in the picked object list'.format(obj.label))
+
+      obstacle_cloud = pcl.PointCloud_PointXYZRGB()
+      obstacle_cloud.from_list(obstacle_cloud_list)
+
+      self.segmenter.convert_and_publish([(obstacle_cloud, self.collision_cloud_pub)]) 
+   ```
+   
+   I was also able to implement a method to rotate the robot to look to the left and right at the side tables and drop boxes. I had planned on adding these to the base collision map, but I ran into a couple of issues. First, I hadn't originally trained the SVM to recognize the drop boxes, so I didn't have a quick way to recognize them and add them to the collison map. In addition, I realized that my assumptions in the segment scene method (e.g. distance to the front of the table for plane segmentation) may not be accurate for the side tables. In any case, once I saw that the paths generated by the pick and place service never really came close to the drop box, I decided there wasn't really a need to add the side table and drop box to the collision map.
+   
+   Here's my code for moving the robot, though... Each time the main script starts up, the robot will move itself according to `PR2.goal_positions`, an array of world joint orientations at which to observe the obstacles in the environment. Once all the goal positions have been achieved and the collision map observed for that orientation, the primary arm mover method is called to pick and place the objects.
+   
+   ```python
+   if len(self.goal_positions)>0:
+       new_position = self.goal_positions.pop()
+       self.move_world_joint(new_position)
+
+       #segment scene and detect objects
+       self.segment_scene(pcl_msg)
+
+       #add obstacles (except for recognized pick objects)
+       #to the base collision map
+       self.build_collision_map()
+   else:
+       #identify the objects listed in the pick list
+       #submit them to the pick_place_routine
+       self.mover()
+   ```
+   
+   Here are the methods that actually move the robot joint.
+   
+   ```python
+   def move_world_joint(self, goal):
+       print('Attempting to move world joint to {}'.format(goal))
+       pub_j1 = rospy.Publisher('/pr2/world_joint_controller/command',
+                                Float64, queue_size=10)
+       increments = 10
+       position = self.get_world_joint_state()
+
+       goal_positions = [n*1.0/increments*(goal-position) + position for n in range(1, increments + 1)]
+       for i, g in enumerate(goal_positions):
+           print('Publishing goal {0}: {1}'.format(i, g))
+           while abs(position - g) > .005:
+               pub_j1.publish(g)
+               position = self.get_world_joint_state()
+               print('Position: {0}, Error: {1}'.format(position, abs(position - g)))
+               rospy.sleep(1)
+    
+     def get_world_joint_state(self):
+       try:
+           msg = rospy.wait_for_message("joint_states", JointState, timeout = 10)
+           index = msg.name.index('world_joint')
+           position = msg.position[index]
+       except rospy.ServiceException as e:
+           print('Failed to get world_joint position.')
+           position = 10**6
+
+       return position
+   ``` 
+## 6. Bloopers
+ I noticed quite a few issues with the implementation of the pick and place robot project. For one, the simulation is really heavy, and I had a lot of trouble getting it to run successfully in the VM on my laptop (Macbook Air). I got around the issue by working in test world 1 for the most part since having fewer objects seemed to reduce the computation load significatly. However, when trying to rotate the robot, I routinely got down to <2 fps in the simulation.
+ 
+ I also had problems getting the environment to launch successfully. A number of times I had to completely restart my VM after numerous unsuccessful attempts just to launch the program.
+ 
+ Here's an example of one of the repeated issues along those lines. I'm not sure what gave it the idea, but it seems like PR2 was trying to make shadow puppets:
+ 
+ ![Put a bird on it!][shadow_puppets]
+ 
+ Dramatic reenactment:
+ ![Colbert??][https://gph.is/29Xkwyz]
+ 
 ## 7. Improvements for future:
- ### a. use a more powerful computer to make things less painful
- ### b. retrain SVM to recognize the red and blue boxes in addition to the other objects
- ### c. Implement the turn and look function to build up the baseline collision map including the red and blue boxes
- ### d. Investigate why the collision map does not update correctly after each object is picked
- ### e. Learn to determine whether the object was successfully dropped in the box, and attempt to pick it up again if not
-  #### i. would require a change in architecture since now pointcloud is only passed in before the pick and place routine starts
- ### f. Improve the efficiency of the capture script by vectorizing the histogram processing in numpy
-
-
-### Writeup / README
-
-#### 1. Provide a Writeup / README that includes all the rubric points and how you addressed each one.  You can submit your writeup as markdown or pdf.  
-
-You're reading it!
-
-### Exercise 1, 2 and 3 pipeline implemented
-#### 1. Complete Exercise 1 steps. Pipeline for filtering and RANSAC plane fitting implemented.
-
-#### 2. Complete Exercise 2 steps: Pipeline including clustering for segmentation implemented.  
-
-#### 2. Complete Exercise 3 Steps.  Features extracted and SVM trained.  Object recognition implemented.
-Here is an example of how to include an image in your writeup.
-
-![demo-1](https://user-images.githubusercontent.com/20687560/28748231-46b5b912-7467-11e7-8778-3095172b7b19.png)
-
-### Pick and Place Setup
-
-#### 1. For all three tabletop setups (`test*.world`), perform object recognition, then read in respective pick list (`pick_list_*.yaml`). Next construct the messages that would comprise a valid `PickPlace` request output them to `.yaml` format.
-
-And here's another image! 
-![demo-2](https://user-images.githubusercontent.com/20687560/28748286-9f65680e-7468-11e7-83dc-f1a32380b89c.png)
-
-Spend some time at the end to discuss your code, what techniques you used, what worked and why, where the implementation might fail and how you might improve it if you were going to pursue this project further.  
+ There are still a number of things I would like to improve if I were to continue working on this project.
+ 
+ 1. Get a better computer:
+  Not really a technical improvement, but I think I would have had a much easier time with a more powerful computer...
+ 2. Improve the collision map:
+  I'd like to retrain my SVM to recognize the drop boxes so I could add them to the static collision map and get a fuller represenation of the map by rotating the robot around. In addition, I never figured out why the collision map wasn't updating in RViz even though I was sending it a new map with the next object to pick removed from the map.
+ 3. Change the PCL callback structure:
+  There are some inherent limitations in the way the pcl callback method is written. It gets a single point cloud, which it uses to locate the objects in the scene and generate a collision map. Unfortunately, since the pick and place service isn't completely reliable, some objects may be moved, dropped, etc., resulting in inaccurate collision maps and grasp locations. I'd like to consider other workflows that would allow me to check whether the object was successfully dropped in the box, update the collision map and grasp locations if the objects move, and reattempt failed pick and place operations.
+ 4. Improve feature extraction efficiency:
+  I realized that a significant portion of the computational load comes from generating the feature histograms for all of the object clusters in the scene. Buiding the histogram seems to be fairly inefficient process in Numpy, but it is made much more so by not vectorizing the operation. I didn't dig into it too much, but Numpy's `numpy.histogramdd()` seems like it would be much more efficient than an iterative approach. 
 
 
 
