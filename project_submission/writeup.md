@@ -8,7 +8,7 @@
 
 # Project: Perception Pick & Place
 
-## 1. Structure of main program
+## 1. Program Structure
  My first step in this project was to improve the organization and modularity of the project code. I chose to break the primary functions of the code into a few classes:
  * `PR2()`: This primary class contains most of the functions of the robot, including the `pcl_callback()` method, which responds to new pointcloud messages from the `/pr2/world/points` topic.
  * `Segmenter()`: This class contains all of the perception methods required to process the point cloud, detect objects, and publish object markers. It is instantiated and utilized within `PR2()`. `Segmenter()` is kept in a separate file from the main python file from the main PR2 file.
@@ -38,8 +38,8 @@ if __name__ == '__main__':
         pass
 ```
 
-## 2. Perception pipeline and segmenter class
- ### a. Filtering, RANSAC plane filtering, object clustering
+## 2. Perception Pipeline
+ ### a. Filtering and Clustering
   In order to interpret the point cloud message, significant processing was required. I tackled this problem by making separate methods for all of the processing steps that are required in the pick and place project, then calling them in the appropriate order and with experimentally determined parameters in order to achieve the desired result: accurate segmentation of object clusters.
   
   The order of operations implemented in `PR2.segment_scene()` is as follows:
@@ -105,8 +105,8 @@ if __name__ == '__main__':
         self.table_cloud = table_cloud
    ```
 
- ### b. Feature Extraction and Object Detection SVM (including addition of additional color space, allowing for reducing bin count)
-  Put make the sensor stick package a separate repo pulled into the pick and place project repo as a submodule rather than copying it into the perception project or having duplicated training/capture functions for the perception exercises and project.
+ ### b. Feature Extraction and Object Detection SVM
+  I chose to make the sensor stick package a separate repo pulled into the pick and place project repo as a submodule. This helped me avoid copying it into the perception project or having duplicated training/capture functions for the perception exercises and project.
   
   Within sensor_stick, I updated the feature extraction script (sensor_stick/src/sensor_stick/features.py) used to train my object detection SVM in a few key ways:
    1. Added YCbCr color histogram extraction to my feature vector
@@ -172,14 +172,18 @@ if __name__ == '__main__':
   * Test World 3 ([see yaml](./output_3.yaml)): 7 of 8 (88%)
  
  Here are the camera views as captured in RViz:
+ 
+  Test World 1
   ![Test World 1][test_world_1_result]
   
+  Test World 2
   ![Test World 2][test_world_2_result]
-    
+  
+  Test World 3
   ![Test World 3][test_world_3_result]
 
-## 4. Successful pick and place!
- With the collision map in place and a fairly accurate object detection SVM, I was able to successfully pick and place objects! Here's a video of a successful run.
+## 4. Successful Pick and Place!
+ With the collision map in place and a fairly accurate object detection SVM, I was able to successfully pick and place objects! Here's a video of a successful run:
  
  [![Successful Pick and Place Run](https://img.youtube.com/vi/bGgx0UMarA0/0.jpg)](https://www.youtube.com/watch?v=bGgx0UMarA0)
  
@@ -187,7 +191,7 @@ if __name__ == '__main__':
  
  I found that even when the correct grasp location was passed to the pick and place service, repeatability was a serious problem. I also was not able to test out the pick and place function on larger object sets due to performance limitations on my laptop. Gazebo + RViz is quite heavy, especially within the virtual machine (running on only 2 cores).
 
-## 5. Building collision map
+## 5. Building the Collision Map
  I first chose to build the collision map without rotating the PR2 world joint. I chose to implement the collision map in two stages. First, I built a baseline map for the static objects that would not be grasped. In the simple case in which the robot does not rotate, this includes only the table. Then, each time I detected the next object in the pick list queue, I appended all other objects that had not yet been picked to the collision map cloud. I then published the collision cloud to the `/pr2/3d_map/points` topic. Unfortunately, for reasons I wasn't able to determine, the collision cloud did not update each time I published a new set of points.
  
  ```python
@@ -265,7 +269,7 @@ if __name__ == '__main__':
 
        return position
    ``` 
-## 6. Bloopers
+## 6. Bloopers:
  I noticed quite a few issues with the implementation of the pick and place robot project. For one, the simulation is really heavy, and I had a lot of trouble getting it to run successfully in the VM on my laptop (Macbook Air). I got around the issue by working in test world 1 for the most part since having fewer objects seemed to reduce the computation load significatly. However, when trying to rotate the robot, I routinely got down to <2 fps in the simulation.
  
  I also had problems getting the environment to launch successfully. A number of times I had to completely restart my VM after numerous unsuccessful attempts just to launch the program.
@@ -277,7 +281,7 @@ if __name__ == '__main__':
  Dramatic reenactment:
  ![Colbert??][https://gph.is/29Xkwyz]
  
-## 7. Improvements for future:
+## 7. Potential Improvements:
  There are still a number of things I would like to improve if I were to continue working on this project.
  
  1. Get a better computer:
