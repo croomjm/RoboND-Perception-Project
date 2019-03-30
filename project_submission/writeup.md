@@ -7,6 +7,16 @@
 [test_world_3_result]: ./images/test_world_3.png
 
 # Project: Perception Pick & Place
+I completed this project as part of [my Udacity Robotics Software Engineering Nanodegree](https://confirm.udacity.com/AQCTW57M). Using the Udacity-supplied ROS environment (a PR2 robot equipped with an RGBd camera in front of a table and various objects in front of it), I had to develop a Support Vector Machine model capable of recognizing the various objects on the table and outputting the correct location for the robot to grasp the object based on the pick-list order. This required the use of various techniques to segment the raw point cloud appropriately. I also had to determine what features should be used in the SVM for the highest success rate (spoiler alert: a normalized point cloud distance histogram along with a combied YCbCr and HSV color histogram worked best). I also made numerous improvements to the software provided by Udacity to make it more modular and extensible. Libraries/platforms used in the completion of this project included:
+* Linux OS
+* ROS
+* Gazebo
+* ROS MoveIt
+* RViz
+* ROSpy Python Module
+* Numpy
+* SciKit Learn
+* Python Point Cloud Library (pcl)
 
 ## 1. Program Structure
  My first step in this project was to improve the organization and modularity of the project code. I chose to break the primary functions of the code into a few classes:
