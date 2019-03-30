@@ -1,10 +1,10 @@
 [//]: # (Image References)
-[normalized_confusion_matrix]: ./images/Normalized_confusion_matrix.png
-[raw_confusion_matrix]: ./images/Raw_confusion_matrix.png
-[shadow_puppets]: ./images/shadow_puppets.png
-[test_world_1_result]: ./images/test_world_1.png
-[test_world_2_result]: ./images/test_world_2.png
-[test_world_3_result]: ./images/test_world_3.png
+[normalized_confusion_matrix]: ./project_submission/images/Normalized_confusion_matrix.png
+[raw_confusion_matrix]: ./project_submission/images/Raw_confusion_matrix.png
+[shadow_puppets]: ./project_submission/images/shadow_puppets.png
+[test_world_1_result]: ./project_submission/images/test_world_1.png
+[test_world_2_result]: ./project_submission/images/test_world_2.png
+[test_world_3_result]: ./project_submission/images/test_world_3.png
 
 # Project: Perception Pick & Place
 I completed this project as part of [my Udacity Robotics Software Engineering Nanodegree](https://confirm.udacity.com/AQCTW57M). Using the Udacity-supplied ROS environment (a PR2 robot equipped with an RGBd camera in front of a table and various objects in front of it), I had to develop a Support Vector Machine model capable of recognizing the various objects on the table and outputting the correct location for the robot to grasp the object based on the pick-list order. This required the use of various techniques to segment the raw point cloud appropriately. I also had to determine what features should be used in the SVM for the highest success rate (spoiler alert: a normalized point cloud distance histogram along with a combied YCbCr and HSV color histogram worked best). I also made numerous improvements to the software provided by Udacity to make it more modular and extensible. Libraries/platforms used in the completion of this project included:
@@ -182,9 +182,9 @@ if __name__ == '__main__':
 
 ## 3. Successful Object Detection in Each Test World
  My object detection SVM was relatively successful in identifying the objects in the 3 test worlds. I achieved the following correctly identified object detection rates:
-  * Test World 1 ([see yaml](./output_1.yaml)): 3 of 3 (100%)
-  * Test World 2 ([see yaml](./output_2.yaml)): 5 of 5 (100%)
-  * Test World 3 ([see yaml](./output_3.yaml)): 7 of 8 (88%)
+  * Test World 1 ([see yaml](./project_submission/output_1.yaml)): 3 of 3 (100%)
+  * Test World 2 ([see yaml](./project_submission/output_2.yaml)): 5 of 5 (100%)
+  * Test World 3 ([see yaml](./project_submission/output_3.yaml)): 7 of 8 (88%)
  
  Here are the camera views as captured in RViz:
  
